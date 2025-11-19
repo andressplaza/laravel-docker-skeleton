@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<ruleset name="LaravelSkeleton">
+  <description>Laravel Coding Standards</description>
+  <file>src</file>
+  <rule ref="PSR12"/>
+</ruleset>
+

@@ -1,0 +1,41 @@
+version: "3.7"
+
+services:
+  php:
+    build: ./docker/php
+    container_name: laravel_php
+    volumes:
+      - ./src:/var/www/html
+    environment:
+      COMPOSER_MEMORY_LIMIT: -1
+    depends_on:
+      - postgres
+      - redis
+
+  nginx:
+    build: ./docker/nginx
+    container_name: laravel_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./src:/var/www/html
+    depends_on:
+      - php
+
+  postgres:
+    image: postgres:15
+    container_name: laravel_postgres
+    environment:
+      POSTGRES_DB: laravel
+      POSTGRES_USER: laravel
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:alpine
+    container_name: laravel_redis
+
+volumes:
+  postgres_data:
+
