@@ -1,32 +1,65 @@
-version: "3.7"
+# ================================
+# Docker Compose - DESARROLLO
+# ================================
+# Configuración para desarrollo local con hot reload
+# Para producción, usar: docker-compose -f docker-compose.prod.yml
+
+version: "3.8"
 
 services:
+  # ================================
+  # PHP-FPM (Development)
+  # ================================
   php:
-    build: ./docker/php
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+      args:
+        ENV: development
     container_name: laravel_php
+    restart: unless-stopped
     volumes:
+      # Bind mount para hot reload en desarrollo
       - ./src:/var/www/html
     environment:
       COMPOSER_MEMORY_LIMIT: -1
+    env_file:
+      - .env.docker
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - laravel_network
 
+  # ================================
+  # NGINX (Development)
+  # ================================
   nginx:
-    build: ./docker/nginx
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+      args:
+        ENV: development
     container_name: laravel_nginx
+    restart: unless-stopped
     ports:
       - "8080:80"
     volumes:
-      - ./src:/var/www/html
+      - ./src:/var/www/html:ro
     depends_on:
       - php
+    networks:
+      - laravel_network
 
+  # ================================
+  # PostgreSQL
+  # ================================
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: laravel_postgres
+    restart: unless-stopped
     env_file:
       - .env.docker
     volumes:
@@ -34,35 +67,59 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U laravel" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
+    networks:
+      - laravel_network
 
+  # ================================
+  # Redis Cache
+  # ================================
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: laravel_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
-    volumes:  
-      - redis_data:/data  
-    command: redis-server --appendonly yes
+    networks:
+      - laravel_network
 
+  # ================================
+  # Node.js (Vite/Assets)
+  # ================================
   node:
     image: node:20-alpine
     container_name: laravel_node
+    restart: unless-stopped
     working_dir: /var/www/html
     volumes:
       - ./src:/var/www/html
     command: sh -c "npm install && npm run dev"
     ports:
-    - "5173:5173"
+      - "5173:5173"
+    networks:
+      - laravel_network
 
+# ================================
+# VOLUMES
+# ================================
 volumes:
   postgres_data:
   redis_data:
+
+# ================================
+# NETWORKS
+# ================================
+networks:
+  laravel_network:
+    driver: bridge

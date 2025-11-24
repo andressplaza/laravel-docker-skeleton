@@ -4,6 +4,7 @@ use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
+use Monolog\Formatter\JsonFormatter;
 
 return [
 
@@ -54,7 +55,7 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'json')),
             'ignore_exceptions' => false,
         ],
 
@@ -63,6 +64,35 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+        ],
+
+        'json' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'formatter' => env('LOG_FORMATTER', 'json'),
+            'handler_with' => [
+                'stream' => storage_path('logs/laravel.log'),
+            ],
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                \Monolog\Processor\ProcessIdProcessor::class,
+                \Monolog\Processor\UidProcessor::class,
+            ],
+        ],
+
+        'json_stderr' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => 'php://stderr',
+            ],
+            'formatter' => 'json',
+            'processors' => [
+                PsrLogMessageProcessor::class,
+                \Monolog\Processor\ProcessIdProcessor::class,
+            ],
         ],
 
         'daily' => [

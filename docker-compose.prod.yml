@@ -1,0 +1,265 @@
+# ================================
+# Docker Compose - PRODUCCIÓN
+# ================================
+# Configuración optimizada para entornos de producción
+# Seguridad, performance, observabilidad
+
+version: "3.8"
+
+services:
+  # ================================
+  # PHP-FPM (Worker)
+  # ================================
+  php:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+      args:
+        ENV: production
+    container_name: laravel_php_prod
+    restart: always
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+    env_file:
+      - .env.docker.prod
+    volumes:
+      # Volumen nombrado para código (no bind mount)
+      - app_code:/var/www/html
+      # Storage para logs y cache
+      - app_storage:/var/www/html/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # ================================
+    # Limits de recursos
+    # ================================
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # NGINX (Reverse Proxy + Web Server)
+  # ================================
+  nginx:
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+      args:
+        ENV: production
+    container_name: laravel_nginx_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - app_code:/var/www/html:ro
+      # SSL Certificates (required for production)
+      # - ./certs:/etc/nginx/ssl:ro
+    depends_on:
+      - php
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # PostgreSQL Database
+  # ================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: laravel_postgres_prod
+    restart: always
+    env_file:
+      - .env.docker.prod
+    volumes:
+      # Volumen nombrado para persistencia
+      - postgres_data:/var/lib/postgresql/data
+      # Backup diario
+      - postgres_backups:/backups
+    ports:
+      - "5432:5432"
+    # ================================
+    # Health Check
+    # ================================
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # ================================
+    # Limits de recursos
+    # ================================
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ================================
+  # Redis Cache/Session Store
+  # ================================
+  redis:
+    image: redis:7-alpine
+    container_name: laravel_redis_prod
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    # ================================
+    # Health Check
+    # ================================
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # ================================
+    # Limits de recursos
+    # ================================
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ================================
+  # Job Queue Worker (Optional)
+  # ================================
+  queue:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+      args:
+        ENV: production
+    container_name: laravel_queue_prod
+    restart: always
+    env_file:
+      - .env.docker.prod
+    volumes:
+      - app_code:/var/www/html
+      - app_storage:/var/www/html/storage
+    depends_on:
+      - php
+      - redis
+    command: php /var/www/html/artisan queue:work --sleep=3 --tries=3 --timeout=30
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ================================
+  # Scheduler (Cron tasks)
+  # ================================
+  scheduler:
+    build:
+      context: .
+      dockerfile: ./docker/php/Dockerfile
+      args:
+        ENV: production
+    container_name: laravel_scheduler_prod
+    restart: always
+    env_file:
+      - .env.docker.prod
+    volumes:
+      - app_code:/var/www/html
+      - app_storage:/var/www/html/storage
+    depends_on:
+      - php
+    command: sh -c "while true; do php /var/www/html/artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    networks:
+      - laravel_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# ================================
+# VOLUMES (Persistencia de datos)
+# ================================
+volumes:
+  app_code:
+    driver: local
+  app_storage:
+    driver: local
+  postgres_data:
+    driver: local
+  postgres_backups:
+    driver: local
+  redis_data:
+    driver: local
+
+# ================================
+# NETWORKS
+# ================================
+networks:
+  laravel_network:
+    driver: bridge

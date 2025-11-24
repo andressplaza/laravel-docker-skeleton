@@ -1,0 +1,53 @@
+# Automatic Semantic Versioning Configuration
+# For use with release-drafter or similar tools
+
+changelog:
+  exclude:
+    labels:
+      - 'skip-changelog'
+      - 'internal'
+  categories:
+    - title: 'Breaking Changes ⚠️'
+      labels:
+        - 'breaking'
+        - 'major'
+    
+    - title: 'Features ✨'
+      labels:
+        - 'feature'
+        - 'enhancement'
+    
+    - title: 'Bug Fixes 🐛'
+      labels:
+        - 'bug'
+        - 'fix'
+    
+    - title: 'Documentation 📚'
+      labels:
+        - 'documentation'
+        - 'docs'
+    
+    - title: 'Performance ⚡'
+      labels:
+        - 'performance'
+    
+    - title: 'Security 🔒'
+      labels:
+        - 'security'
+    
+    - title: 'Dependencies 📦'
+      labels:
+        - 'dependencies'
+
+version:
+  major_increment_labels:
+    - 'breaking'
+    - 'major'
+  minor_increment_labels:
+    - 'feature'
+    - 'enhancement'
+  patch_increment_labels:
+    - 'bug'
+    - 'fix'
+    - 'docs'
+    - 'documentation'

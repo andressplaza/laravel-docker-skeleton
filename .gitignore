@@ -1,0 +1,66 @@
+# ================================
+# VARIABLES DE ENTORNO (CRÍTICO)
+# ================================
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.docker.prod
+!.env.example
+!.env.docker.example
+
+# ================================
+# DEPENDENCIAS
+# ================================
+/node_modules
+/vendor
+/src/vendor
+
+# ================================
+# IDE Y EDITORES
+# ================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ================================
+# LOGS
+# ================================
+*.log
+src/storage/logs/
+
+# ================================
+# CACHE
+# ================================
+src/bootstrap/cache/
+src/storage/framework/cache/
+src/storage/framework/sessions/
+
+# ================================
+# DATABASES
+# ================================
+*.sqlite
+*.sqlite-journal
+src/database/*.sqlite
+
+# ================================
+# BUILD Y COMPILACIÓN
+# ================================
+src/public/hot
+src/public/build/
+src/public/storage
+
+# ================================
+# TESTING
+# ================================
+.phpunit.result.cache
+coverage/
+
+# ================================
+# OS
+# ================================
+.DS_Store
+Thumbs.db
