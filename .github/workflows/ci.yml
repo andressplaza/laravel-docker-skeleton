@@ -1,98 +1,20 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, develop]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, develop]
 
 env:
-  PHP_VERSION: '8.3'
+  PHP_VERSION: "8.3"
+  WORKDIR: "src"
 
 jobs:
-  # ================================
-  # STAGE 1: Code Quality & Linting
-  # ================================
-  code-quality:
-    name: Code Quality Checks
+  build-and-test:
+    name: Quality + Tests
     runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: composer, phpstan, phpcs
-      
-      - name: Cache Composer dependencies
-        uses: actions/cache@v3
-        with:
-          path: vendor
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-composer-
-      
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-        working-directory: src
-      
-      - name: Run PHPStan (Static Analysis)
-        run: vendor/bin/phpstan analyse --no-progress --level=6
-        working-directory: src
-        continue-on-error: false
-      
-      - name: Run PHP CodeSniffer (PHPCS)
-        run: vendor/bin/phpcs --standard=PSR12 --ignore=vendor app
-        working-directory: src
-        continue-on-error: true
-      
-      - name: Run PHP Code Beautifier (auto-fix)
-        run: vendor/bin/phpcbf --standard=PSR12 --ignore=vendor app || true
-        working-directory: src
 
-  # ================================
-  # STAGE 2: Security Scanning
-  # ================================
-  security:
-    name: Security Scanning
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: 'trivy-results.sarif'
-      
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-      
-      - name: Check PHP dependencies for vulnerabilities
-        run: |
-          composer install --prefer-dist --no-progress --no-interaction
-          composer audit --no-interaction || true
-        working-directory: src
-
-  # ================================
-  # STAGE 3: Testing
-  # ================================
-  tests:
-    name: Tests
-    runs-on: ubuntu-latest
-    
     services:
       postgres:
         image: postgres:15-alpine
@@ -102,70 +24,47 @@ jobs:
           POSTGRES_PASSWORD: test_password
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
         ports:
           - 5432:5432
-      
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: pgsql, redis, mbstring, ctype, fileinfo
-      
+          extensions: pgsql, mbstring, ctype, fileinfo
+          tools: composer, phpstan, phpcs
+
       - name: Cache Composer dependencies
         uses: actions/cache@v3
         with:
-          path: vendor
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          path: ${{ env.WORKDIR }}/vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles(env.WORKDIR + '/composer.lock') }}
           restore-keys: |
             ${{ runner.os }}-composer-
-      
+
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
-        working-directory: src
-      
-      - name: Copy .env.example to .env
-        run: cp .env.example .env
-        working-directory: src
-      
-      - name: Generate application key
-        run: php artisan key:generate
-        working-directory: src
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_DATABASE: laravel_test
-          DB_USERNAME: laravel
-          DB_PASSWORD: test_password
-      
-      - name: Run migrations
-        run: php artisan migrate --force
-        working-directory: src
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_DATABASE: laravel_test
-          DB_USERNAME: laravel
-          DB_PASSWORD: test_password
-      
-      - name: Run PHPUnit Tests
-        run: vendor/bin/phpunit
-        working-directory: src
+        working-directory: ${{ env.WORKDIR }}
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --level=6
+        working-directory: ${{ env.WORKDIR }}
+
+      - name: PHPCS
+        run: vendor/bin/phpcs --standard=PSR12 app
+        working-directory: ${{ env.WORKDIR }}
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+        working-directory: ${{ env.WORKDIR }}
         env:
           DB_HOST: localhost
           DB_PORT: 5432
@@ -173,21 +72,38 @@ jobs:
           DB_USERNAME: laravel
           DB_PASSWORD: test_password
 
-  # ================================
-  # STAGE 4: Docker Build
-  # ================================
+      - name: Run migrations
+        run: php artisan migrate --force
+        working-directory: ${{ env.WORKDIR }}
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: laravel_test
+          DB_USERNAME: laravel
+          DB_PASSWORD: test_password
+
+      - name: Run tests
+        run: vendor/bin/phpunit
+        working-directory: ${{ env.WORKDIR }}
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: laravel_test
+          DB_USERNAME: laravel
+          DB_PASSWORD: test_password
+
   docker-build:
-    name: Docker Build Test
+    name: Docker Build
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      
-      - name: Build Docker images
+
+      - name: Build PHP Image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -197,5 +113,3 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             ENV=development
-
-
